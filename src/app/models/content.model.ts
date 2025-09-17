@@ -41,6 +41,45 @@ export interface TMDBMovie {
   adult: boolean;
 }
 
+export interface TMDBTVShow {
+  id: number;
+  name: string;
+  overview: string;
+  poster_path: string;
+  backdrop_path: string;
+  genre_ids: number[];
+  vote_average: number;
+  first_air_date: string;
+  original_name: string;
+  popularity: number;
+}
+
+export interface TMDBMovieDetails {
+  id: number;
+  title: string;
+  overview: string;
+  poster_path: string;
+  backdrop_path: string;
+  genres: { id: number; name: string }[];
+  vote_average: number;
+  release_date: string;
+  runtime: number;
+  adult: boolean;
+}
+
+export interface TMDBTVDetails {
+  id: number;
+  name: string;
+  overview: string;
+  poster_path: string;
+  backdrop_path: string;
+  genres: { id: number; name: string }[];
+  vote_average: number;
+  first_air_date: string;
+  number_of_seasons: number;
+  number_of_episodes: number;
+}
+
 export interface TMDBResponse {
   page: number;
   results: TMDBMovie[];

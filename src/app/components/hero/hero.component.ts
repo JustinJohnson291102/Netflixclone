@@ -341,8 +341,15 @@ export class HeroComponent implements OnInit {
   }
 
   showMoreInfo() {
-    // In a real app, this would open a modal with detailed information
-    console.log('Show more info for:', this.featuredContent?.title);
+    if (this.featuredContent) {
+      this.contentService.getMovieDetails(this.featuredContent.id).then(obs => {
+        obs.subscribe(detailedContent => {
+          // Update the featured content with detailed information
+          this.featuredContent = detailedContent;
+          console.log('Detailed info:', detailedContent);
+        });
+      });
+    }
   }
 
   private startPlaybackSimulation() {

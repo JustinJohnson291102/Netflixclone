@@ -21,10 +21,10 @@ import { Subject, from, of } from 'rxjs';
 
           <!-- Navigation -->
           <nav class="nav">
-            <a href="#" class="nav-link active">Home</a>
-            <a href="#" class="nav-link">Movies</a>
-            <a href="#" class="nav-link">TV Shows</a>
-            <a href="#" class="nav-link">My List</a>
+            <a href="#" class="nav-link" [class.active]="currentPage === 'home'" (click)="navigateTo('home', $event)">Home</a>
+            <a href="#" class="nav-link" [class.active]="currentPage === 'movies'" (click)="navigateTo('movies', $event)">Movies</a>
+            <a href="#" class="nav-link" [class.active]="currentPage === 'tv-shows'" (click)="navigateTo('tv-shows', $event)">TV Shows</a>
+            <a href="#" class="nav-link" [class.active]="currentPage === 'my-list'" (click)="navigateTo('my-list', $event)">My List</a>
           </nav>
 
           <!-- Search & Profile -->
@@ -263,11 +263,17 @@ import { Subject, from, of } from 'rxjs';
 export class HeaderComponent implements OnInit {
   searchQuery = '';
   searchResults: Content[] = [];
+  currentPage = 'home';
   private searchSubject = new Subject<string>();
 
   constructor(private contentService: ContentService) {}
 
   ngOnInit() {
+    // Subscribe to current page changes
+    this.contentService.getCurrentPage().subscribe(page => {
+      this.currentPage = page;
+    });
+
     // Setup search with debouncing
     this.searchSubject.pipe(
       debounceTime(300),
@@ -301,6 +307,11 @@ export class HeaderComponent implements OnInit {
     this.searchResults = [];
     // In a real app, you would navigate to the content detail page
     console.log('Selected content:', content);
+  }
+
+  navigateTo(page: string, event: MouseEvent) {
+    event.preventDefault();
+    this.contentService.setCurrentPage(page);
   }
 
   isInWatchlist(contentId: number): boolean {
