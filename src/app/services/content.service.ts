@@ -164,7 +164,6 @@ export class ContentService {
       originalTitle: movie.title,
       popularity: movie.rating * 10
     }));
-    }
   }
 
   private convertTMDBTVToContent(tmdbShow: TMDBTVShow): Content {
