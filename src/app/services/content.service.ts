@@ -74,7 +74,7 @@ export class ContentService {
     try {
       const response = await fetch(`${this.TMDB_BASE_URL}${endpoint}?api_key=${this.TMDB_API_KEY}&page=1`);
       const data: TMDBResponse = await response.json();
-      return data.results.map(movie => this.convertTMDBToContent(movie));
+      return (data.results || []).map(movie => this.convertTMDBToContent(movie));
     } catch (error) {
       console.error('Error fetching movies:', error);
       return [];
