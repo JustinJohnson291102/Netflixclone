@@ -63,10 +63,10 @@ import { Subject, from, of } from 'rxjs';
 
             <div class="profile">
               <img 
-                src="https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=50" 
-                alt="Profile" 
-                class="profile-avatar"
-              />
+            <div class="profile-avatar">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
             </div>
           </div>
         </div>
@@ -225,13 +225,19 @@ import { Subject, from, of } from 'rxjs';
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      object-fit: cover;
+      background: var(--background-gray);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
       cursor: pointer;
       transition: transform 0.2s ease;
     }
 
     .profile-avatar:hover {
       transform: scale(1.1);
+      background: var(--background-light);
+      color: var(--text-primary);
     }
 
     @media (max-width: 1024px) {
