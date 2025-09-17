@@ -73,9 +73,9 @@ export class App implements OnInit {
 
   constructor(private contentService: ContentService) {}
 
-  ngOnInit() {
+  async ngOnInit() {
     this.isLoading = true;
-    this.contentService.getCategories().subscribe(categories => {
+    (await this.contentService.getCategories()).subscribe(categories => {
         this.isLoading = false;
       this.categories = categories;
     });
