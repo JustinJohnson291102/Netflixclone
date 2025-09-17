@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ContentService } from '../../services/content.service';
 import { Content } from '../../models/content.model';
-import { debounceTime, distinctUntilChanged, switchMap, from } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
+import { Subject, from, of } from 'rxjs';
 
 @Component({
   selector: 'app-header',
@@ -272,7 +272,14 @@ export class HeaderComponent implements OnInit {
     this.searchSubject.pipe(
       debounceTime(300),
       distinctUntilChanged(),
-      switchMap(query => from(this.contentService.searchContent(query)).pipe(switchMap(obs => obs)))
+      switchMap(async query => {
+        if (!query.trim()) {
+          return of([]);
+        }
+        const observable = await this.contentService.searchContent(query);
+        return observable;
+      }),
+      switchMap(obs => obs)
     ).subscribe(results => {
       this.searchResults = results;
     });
