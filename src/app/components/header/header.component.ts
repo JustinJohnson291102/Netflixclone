@@ -278,14 +278,14 @@ export class HeaderComponent implements OnInit {
     this.searchSubject.pipe(
       debounceTime(300),
       distinctUntilChanged(),
-      switchMap(async query => {
+      switchMap(query => {
         if (!query.trim()) {
           return of([]);
         }
-        const observable = await this.contentService.searchContent(query);
-        return observable;
-      }),
-      switchMap(obs => obs)
+        return from(this.contentService.searchContent(query)).pipe(
+          switchMap(obs => obs)
+        );
+      })
     ).subscribe(results => {
       this.searchResults = results;
     });
