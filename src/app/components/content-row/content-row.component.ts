@@ -473,6 +473,22 @@ import { ContentService } from '../../services/content.service';
       font-size: 14px;
     }
 
+    .modal-trailer {
+      padding: 0 40px 20px;
+    }
+
+    .trailer-container h3 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+
+    .trailer-iframe {
+      width: 100%;
+      height: 400px;
+      border-radius: 8px;
+    }
     @media (max-width: 1024px) {
       .content-card {
         flex: 0 0 240px;
@@ -503,6 +519,14 @@ import { ContentService } from '../../services/content.service';
       
       .modal-details {
         padding: 20px;
+      }
+      
+      .modal-trailer {
+        padding: 0 20px 20px;
+      }
+      
+      .trailer-iframe {
+        height: 250px;
       }
     }
   `]

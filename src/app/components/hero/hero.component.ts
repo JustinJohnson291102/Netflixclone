@@ -203,6 +203,12 @@ import { Content } from '../../models/content.model';
       flex-direction: column;
     }
 
+    .trailer-iframe {
+      width: 100%;
+      flex: 1;
+      min-height: 400px;
+    }
+
     .video-placeholder {
       flex: 1;
       display: flex;

@@ -7,14 +7,17 @@ import { Content, Category, TMDBMovie, TMDBResponse, Genre, TMDBTVShow, TMDBMovi
   providedIn: 'root'
 })
 export class ContentService {
-  // Using TMDB API - you can get a free API key from https://www.themoviedb.org/settings/api
-  private readonly TMDB_API_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI4ZjU5YzJjYzQzYzY0NzBkYjY5NzNkNzY5MzY5NzY5NiIsInN1YiI6IjY0YzY0NzBkYjY5NzNkNzY5MzY5NzY5NiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.example'; // This is a placeholder
+  // TMDb API - Free API with 1000 requests per day
+  private readonly TMDB_API_KEY = '8f59c2cc43c6470db6973d769369769'; // This is a demo key, replace with your own
   private readonly TMDB_BASE_URL = 'https://api.themoviedb.org/3';
   private readonly TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
   
-  // Using OMDb API as backup (free with limited requests)
-  private readonly OMDB_API_KEY = 'trilogy'; // Free API key for demo
+  // OMDb API - Free with 1000 requests per day
+  private readonly OMDB_API_KEY = 'trilogy'; // Free demo key, replace with your own
   private readonly OMDB_BASE_URL = 'https://www.omdbapi.com';
+  
+  // YouTube API for trailers (optional, using embedded videos)
+  private readonly YOUTUBE_API_KEY = 'demo_key'; // Replace with your YouTube API key
   
   private searchQuery$ = new BehaviorSubject<string>('');
   private watchlist$ = new BehaviorSubject<Content[]>([]);
@@ -22,10 +25,10 @@ export class ContentService {
   private genres: Genre[] = [];
   private tvGenres: Genre[] = [];
   private allContent: Content[] = [];
+  private isInitialized = false;
 
   constructor() {
     this.initializeGenres();
-    this.loadInitialContent();
   }
 
   private initializeGenres(): void {
@@ -39,279 +42,364 @@ export class ContentService {
       { id: 10749, name: 'Romance' },
       { id: 16, name: 'Animation' },
       { id: 80, name: 'Crime' },
-      { id: 99, name: 'Documentary' }
+      { id: 99, name: 'Documentary' },
+      { id: 14, name: 'Fantasy' },
+      { id: 36, name: 'History' },
+      { id: 10402, name: 'Music' },
+      { id: 9648, name: 'Mystery' },
+      { id: 10770, name: 'TV Movie' },
+      { id: 10752, name: 'War' },
+      { id: 37, name: 'Western' }
     ];
     
     this.tvGenres = [
       { id: 10759, name: 'Action & Adventure' },
+      { id: 16, name: 'Animation' },
       { id: 35, name: 'Comedy' },
-      { id: 18, name: 'Drama' },
-      { id: 10765, name: 'Sci-Fi & Fantasy' },
       { id: 80, name: 'Crime' },
       { id: 99, name: 'Documentary' },
+      { id: 18, name: 'Drama' },
       { id: 10751, name: 'Family' },
-      { id: 10762, name: 'Kids' }
+      { id: 10762, name: 'Kids' },
+      { id: 9648, name: 'Mystery' },
+      { id: 10763, name: 'News' },
+      { id: 10764, name: 'Reality' },
+      { id: 10765, name: 'Sci-Fi & Fantasy' },
+      { id: 10766, name: 'Soap' },
+      { id: 10767, name: 'Talk' },
+      { id: 10768, name: 'War & Politics' },
+      { id: 37, name: 'Western' }
     ];
   }
 
-  private async loadInitialContent(): Promise<void> {
+  private async initializeContent(): Promise<void> {
+    if (this.isInitialized) return;
+    
     try {
-      // Load popular movies from multiple sources
-      const popularMovies = await this.fetchPopularMovies();
-      const topRatedMovies = await this.fetchTopRatedMovies();
-      const actionMovies = await this.fetchMoviesByGenre('action');
-      const comedyMovies = await this.fetchMoviesByGenre('comedy');
+      console.log('Initializing content from APIs...');
       
+      // Fetch content from multiple sources
+      const [popularMovies, topRatedMovies, trendingMovies, popularTVShows] = await Promise.all([
+        this.fetchTMDbPopularMovies(),
+        this.fetchTMDbTopRatedMovies(),
+        this.fetchTMDbTrendingMovies(),
+        this.fetchTMDbPopularTVShows()
+      ]);
+
       this.allContent = [
         ...popularMovies,
         ...topRatedMovies,
-        ...actionMovies,
-        ...comedyMovies
+        ...trendingMovies,
+        ...popularTVShows
       ];
+
+      // Remove duplicates based on title
+      this.allContent = this.allContent.filter((content, index, self) => 
+        index === self.findIndex(c => c.title === content.title)
+      );
+
+      console.log(`Loaded ${this.allContent.length} content items`);
+      this.isInitialized = true;
     } catch (error) {
-      console.error('Error loading initial content:', error);
+      console.error('Error initializing content:', error);
       this.allContent = this.getFallbackMovies();
+      this.isInitialized = true;
     }
   }
 
-  private async fetchPopularMovies(): Promise<Content[]> {
+  private async fetchTMDbPopularMovies(): Promise<Content[]> {
     try {
-      // Try TMDB first, then fallback to OMDb
-      const response = await fetch(`${this.OMDB_BASE_URL}/?s=batman&apikey=${this.OMDB_API_KEY}`);
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/movie/popular?api_key=${this.TMDB_API_KEY}&language=en-US&page=1`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`TMDb API error: ${response.status}`);
+      }
+      
+      const data: TMDBResponse = await response.json();
+      
+      const movies = await Promise.all(
+        data.results.slice(0, 20).map(async (movie) => {
+          const details = await this.fetchTMDbMovieDetails(movie.id);
+          const trailerUrl = await this.fetchMovieTrailer(movie.id);
+          return this.convertTMDbMovieToContent(movie, details, trailerUrl);
+        })
+      );
+      
+      return movies.filter(movie => movie !== null);
+    } catch (error) {
+      console.error('Error fetching popular movies from TMDb:', error);
+      return [];
+    }
+  }
+
+  private async fetchTMDbTopRatedMovies(): Promise<Content[]> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/movie/top_rated?api_key=${this.TMDB_API_KEY}&language=en-US&page=1`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`TMDb API error: ${response.status}`);
+      }
+      
+      const data: TMDBResponse = await response.json();
+      
+      const movies = await Promise.all(
+        data.results.slice(0, 20).map(async (movie) => {
+          const details = await this.fetchTMDbMovieDetails(movie.id);
+          const trailerUrl = await this.fetchMovieTrailer(movie.id);
+          return this.convertTMDbMovieToContent(movie, details, trailerUrl);
+        })
+      );
+      
+      return movies.filter(movie => movie !== null);
+    } catch (error) {
+      console.error('Error fetching top rated movies from TMDb:', error);
+      return [];
+    }
+  }
+
+  private async fetchTMDbTrendingMovies(): Promise<Content[]> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/trending/movie/week?api_key=${this.TMDB_API_KEY}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`TMDb API error: ${response.status}`);
+      }
+      
+      const data: TMDBResponse = await response.json();
+      
+      const movies = await Promise.all(
+        data.results.slice(0, 20).map(async (movie) => {
+          const details = await this.fetchTMDbMovieDetails(movie.id);
+          const trailerUrl = await this.fetchMovieTrailer(movie.id);
+          return this.convertTMDbMovieToContent(movie, details, trailerUrl);
+        })
+      );
+      
+      return movies.filter(movie => movie !== null);
+    } catch (error) {
+      console.error('Error fetching trending movies from TMDb:', error);
+      return [];
+    }
+  }
+
+  private async fetchTMDbPopularTVShows(): Promise<Content[]> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/tv/popular?api_key=${this.TMDB_API_KEY}&language=en-US&page=1`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`TMDb API error: ${response.status}`);
+      }
+      
       const data = await response.json();
       
-      if (data.Response === 'True' && data.Search) {
-        const movies = await Promise.all(
-          data.Search.slice(0, 10).map(async (movie: any) => {
-            const details = await this.fetchOMDbDetails(movie.imdbID);
-            return this.convertOMDbToContent(details, movie);
-          })
-        );
-        return movies.filter(movie => movie !== null);
-      }
+      const shows = await Promise.all(
+        data.results.slice(0, 15).map(async (show: TMDBTVShow) => {
+          const details = await this.fetchTMDbTVDetails(show.id);
+          const trailerUrl = await this.fetchTVTrailer(show.id);
+          return this.convertTMDbTVToContent(show, details, trailerUrl);
+        })
+      );
       
-      return this.getFallbackMovies();
+      return shows.filter(show => show !== null);
     } catch (error) {
-      console.error('Error fetching popular movies:', error);
-      return this.getFallbackMovies();
+      console.error('Error fetching popular TV shows from TMDb:', error);
+      return [];
     }
   }
 
-  private async fetchTopRatedMovies(): Promise<Content[]> {
+  private async fetchTMDbMovieDetails(movieId: number): Promise<TMDBMovieDetails | null> {
     try {
-      const searches = ['avengers', 'inception', 'interstellar', 'godfather', 'pulp'];
-      const movies: Content[] = [];
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/movie/${movieId}?api_key=${this.TMDB_API_KEY}&language=en-US&append_to_response=credits`
+      );
       
-      for (const search of searches) {
-        try {
-          const response = await fetch(`${this.OMDB_BASE_URL}/?s=${search}&apikey=${this.OMDB_API_KEY}`);
-          const data = await response.json();
-          
-          if (data.Response === 'True' && data.Search && data.Search.length > 0) {
-            const movie = data.Search[0];
-            const details = await this.fetchOMDbDetails(movie.imdbID);
-            const content = this.convertOMDbToContent(details, movie);
-            if (content) {
-              movies.push(content);
-            }
-          }
-        } catch (error) {
-          console.error(`Error fetching ${search}:`, error);
-        }
+      if (!response.ok) {
+        return null;
       }
       
-      return movies.length > 0 ? movies : this.getFallbackMovies().slice(0, 5);
-    } catch (error) {
-      console.error('Error fetching top rated movies:', error);
-      return this.getFallbackMovies().slice(0, 5);
-    }
-  }
-
-  private async fetchMoviesByGenre(genre: string): Promise<Content[]> {
-    try {
-      const genreSearches: { [key: string]: string[] } = {
-        action: ['matrix', 'terminator', 'die hard', 'john wick'],
-        comedy: ['hangover', 'superbad', 'anchorman', 'dumb dumber'],
-        drama: ['shawshank', 'forrest gump', 'titanic', 'gladiator'],
-        horror: ['exorcist', 'halloween', 'friday 13th', 'nightmare elm']
-      };
-      
-      const searches = genreSearches[genre] || ['movie'];
-      const movies: Content[] = [];
-      
-      for (const search of searches) {
-        try {
-          const response = await fetch(`${this.OMDB_BASE_URL}/?s=${search}&apikey=${this.OMDB_API_KEY}`);
-          const data = await response.json();
-          
-          if (data.Response === 'True' && data.Search && data.Search.length > 0) {
-            const movie = data.Search[0];
-            const details = await this.fetchOMDbDetails(movie.imdbID);
-            const content = this.convertOMDbToContent(details, movie);
-            if (content) {
-              movies.push(content);
-            }
-          }
-        } catch (error) {
-          console.error(`Error fetching ${search}:`, error);
-        }
-      }
-      
-      return movies.length > 0 ? movies : this.getFallbackMovies().slice(0, 4);
-    } catch (error) {
-      console.error(`Error fetching ${genre} movies:`, error);
-      return this.getFallbackMovies().slice(0, 4);
-    }
-  }
-
-  private async fetchOMDbDetails(imdbID: string): Promise<any> {
-    try {
-      const response = await fetch(`${this.OMDB_BASE_URL}/?i=${imdbID}&apikey=${this.OMDB_API_KEY}`);
       return await response.json();
     } catch (error) {
-      console.error('Error fetching OMDb details:', error);
+      console.error(`Error fetching movie details for ${movieId}:`, error);
       return null;
     }
   }
 
-  private convertOMDbToContent(omdbData: any, searchResult: any): Content | null {
-    if (!omdbData || omdbData.Response === 'False') {
+  private async fetchTMDbTVDetails(tvId: number): Promise<TMDBTVDetails | null> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/tv/${tvId}?api_key=${this.TMDB_API_KEY}&language=en-US&append_to_response=credits`
+      );
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Error fetching TV details for ${tvId}:`, error);
       return null;
     }
+  }
 
-    const genres = omdbData.Genre ? omdbData.Genre.split(', ') : ['Drama'];
-    const rating = omdbData.imdbRating && omdbData.imdbRating !== 'N/A' 
-      ? parseFloat(omdbData.imdbRating) 
-      : Math.random() * 3 + 7; // Random rating between 7-10
+  private async fetchMovieTrailer(movieId: number): Promise<string | null> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${this.TMDB_API_KEY}&language=en-US`
+      );
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      const trailer = data.results.find((video: any) => 
+        video.type === 'Trailer' && video.site === 'YouTube'
+      );
+      
+      return trailer ? `https://www.youtube.com/embed/${trailer.key}` : null;
+    } catch (error) {
+      console.error(`Error fetching trailer for movie ${movieId}:`, error);
+      return null;
+    }
+  }
+
+  private async fetchTVTrailer(tvId: number): Promise<string | null> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/tv/${tvId}/videos?api_key=${this.TMDB_API_KEY}&language=en-US`
+      );
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      const trailer = data.results.find((video: any) => 
+        video.type === 'Trailer' && video.site === 'YouTube'
+      );
+      
+      return trailer ? `https://www.youtube.com/embed/${trailer.key}` : null;
+    } catch (error) {
+      console.error(`Error fetching trailer for TV show ${tvId}:`, error);
+      return null;
+    }
+  }
+
+  private convertTMDbMovieToContent(movie: TMDBMovie, details: TMDBMovieDetails | null, trailerUrl: string | null): Content | null {
+    if (!movie) return null;
+
+    const genres = details?.genres?.map(g => g.name) || 
+                  movie.genre_ids.map(id => this.genres.find(g => g.id === id)?.name).filter(Boolean) as string[];
+
+    const cast = (details as any)?.credits?.cast?.slice(0, 5).map((actor: any) => actor.name) || [];
+    const director = (details as any)?.credits?.crew?.find((person: any) => person.job === 'Director')?.name || 'Unknown Director';
 
     return {
-      id: parseInt(omdbData.imdbID.replace('tt', '')) || Math.random() * 1000000,
-      title: omdbData.Title || searchResult.Title,
-      description: omdbData.Plot && omdbData.Plot !== 'N/A' 
-        ? omdbData.Plot 
-        : 'An exciting movie experience awaits you.',
-      thumbnail: omdbData.Poster && omdbData.Poster !== 'N/A' 
-        ? omdbData.Poster 
-        : searchResult.Poster && searchResult.Poster !== 'N/A'
-        ? searchResult.Poster
-        : `https://images.pexels.com/photos/${Math.floor(Math.random() * 1000000) + 1000000}/pexels-photo-${Math.floor(Math.random() * 1000000) + 1000000}.jpeg?auto=compress&cs=tinysrgb&w=400`,
-      backdrop: omdbData.Poster && omdbData.Poster !== 'N/A' 
-        ? omdbData.Poster.replace('300', '1280')
-        : `https://images.pexels.com/photos/${Math.floor(Math.random() * 1000000) + 1000000}/pexels-photo-${Math.floor(Math.random() * 1000000) + 1000000}.jpeg?auto=compress&cs=tinysrgb&w=1200`,
-      genre: genres,
-      rating: Math.round(rating * 10) / 10,
-      year: omdbData.Year ? parseInt(omdbData.Year) : 2020,
-      duration: omdbData.Runtime && omdbData.Runtime !== 'N/A' 
-        ? omdbData.Runtime 
-        : '120 min',
-      type: omdbData.Type === 'series' ? 'series' : 'movie',
-      trending: rating > 8.0,
-      featured: rating > 8.5,
-      maturityRating: omdbData.Rated && omdbData.Rated !== 'N/A' ? omdbData.Rated : 'PG-13',
-      cast: omdbData.Actors && omdbData.Actors !== 'N/A' 
-        ? omdbData.Actors.split(', ') 
-        : ['Cast information not available'],
-      director: omdbData.Director && omdbData.Director !== 'N/A' 
-        ? omdbData.Director 
-        : 'Director information not available',
-      releaseDate: omdbData.Released,
-      originalTitle: omdbData.Title,
-      popularity: rating * 10
+      id: movie.id,
+      title: movie.title,
+      description: movie.overview || 'No description available.',
+      thumbnail: movie.poster_path ? `${this.TMDB_IMAGE_BASE_URL}/w500${movie.poster_path}` : this.getPlaceholderImage(),
+      backdrop: movie.backdrop_path ? `${this.TMDB_IMAGE_BASE_URL}/w1280${movie.backdrop_path}` : this.getPlaceholderImage(),
+      videoUrl: trailerUrl || undefined,
+      trailerUrl: trailerUrl || undefined,
+      genre: genres.length > 0 ? genres : ['Drama'],
+      rating: Math.round(movie.vote_average * 10) / 10,
+      year: movie.release_date ? new Date(movie.release_date).getFullYear() : 2023,
+      duration: details?.runtime ? `${details.runtime} min` : '120 min',
+      type: 'movie',
+      trending: movie.popularity > 100,
+      featured: movie.vote_average > 8.0,
+      maturityRating: movie.adult ? 'R' : 'PG-13',
+      cast: cast.length > 0 ? cast : ['Cast information not available'],
+      director: director,
+      releaseDate: movie.release_date,
+      originalTitle: movie.original_title,
+      popularity: movie.popularity
     };
   }
 
-  private getFallbackMovies(): Content[] {
-    const fallbackMovies = [
-      {
-        title: 'The Dark Knight',
-        description: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests.',
-        thumbnail: 'https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_SX300.jpg',
-        backdrop: 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=1200',
-        genres: ['Action', 'Crime', 'Drama'],
-        rating: 9.0,
-        year: 2008,
-        imdbID: 'tt0468569'
-      },
-      {
-        title: 'Inception',
-        description: 'A thief who steals corporate secrets through dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
-        thumbnail: 'https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_SX300.jpg',
-        backdrop: 'https://images.pexels.com/photos/7991225/pexels-photo-7991225.jpeg?auto=compress&cs=tinysrgb&w=1200',
-        genres: ['Action', 'Sci-Fi', 'Thriller'],
-        rating: 8.8,
-        year: 2010,
-        imdbID: 'tt1375666'
-      },
-      {
-        title: 'Interstellar',
-        description: 'A team of explorers travel through a wormhole in space in an attempt to ensure humanity\'s survival.',
-        thumbnail: 'https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_SX300.jpg',
-        backdrop: 'https://images.pexels.com/photos/7991664/pexels-photo-7991664.jpeg?auto=compress&cs=tinysrgb&w=1200',
-        genres: ['Adventure', 'Drama', 'Sci-Fi'],
-        rating: 8.6,
-        year: 2014,
-        imdbID: 'tt0816692'
-      },
-      {
-        title: 'The Matrix',
-        description: 'A computer programmer is led to fight an underground war against powerful computers who have constructed his entire reality with a system called the Matrix.',
-        thumbnail: 'https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_SX300.jpg',
-        backdrop: 'https://images.pexels.com/photos/8566473/pexels-photo-8566473.jpeg?auto=compress&cs=tinysrgb&w=1200',
-        genres: ['Action', 'Sci-Fi'],
-        rating: 8.7,
-        year: 1999,
-        imdbID: 'tt0133093'
-      },
-      {
-        title: 'Pulp Fiction',
-        description: 'The lives of two mob hitmen, a boxer, a gangster and his wife intertwine in four tales of violence and redemption.',
-        thumbnail: 'https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGdeQXVyNzkwMjQ5NzM@._V1_SX300.jpg',
-        backdrop: 'https://images.pexels.com/photos/8111357/pexels-photo-8111357.jpeg?auto=compress&cs=tinysrgb&w=1200',
-        genres: ['Crime', 'Drama'],
-        rating: 8.9,
-        year: 1994,
-        imdbID: 'tt0110912'
-      },
-      {
-        title: 'The Avengers',
-        description: 'Earth\'s mightiest heroes must come together and learn to fight as a team if they are going to stop the mischievous Loki and his alien army from enslaving humanity.',
-        thumbnail: 'https://m.media-amazon.com/images/M/MV5BNDYxNjQyMjAtNTdiOS00NGYwLWFmNTAtNThmYjU5ZGI2YTI1XkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_SX300.jpg',
-        backdrop: 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=1200',
-        genres: ['Action', 'Adventure', 'Sci-Fi'],
-        rating: 8.0,
-        year: 2012,
-        imdbID: 'tt0848228'
-      }
-    ];
+  private convertTMDbTVToContent(show: TMDBTVShow, details: TMDBTVDetails | null, trailerUrl: string | null): Content | null {
+    if (!show) return null;
 
-    return fallbackMovies.map((movie, index) => ({
-      id: index + 1,
-      title: movie.title,
-      description: movie.description,
-      thumbnail: movie.thumbnail,
-      backdrop: movie.backdrop,
-      genre: movie.genres,
-      rating: movie.rating,
-      year: movie.year,
-      duration: '120 min',
-      type: 'movie' as const,
-      trending: movie.rating > 8.5,
-      featured: movie.rating > 8.5,
-      maturityRating: 'PG-13',
-      cast: ['Actor 1', 'Actor 2', 'Actor 3'],
-      director: 'Director Name',
-      releaseDate: `${movie.year}-01-01`,
-      originalTitle: movie.title,
-      popularity: movie.rating * 10
-    }));
+    const genres = details?.genres?.map(g => g.name) || 
+                  show.genre_ids.map(id => this.tvGenres.find(g => g.id === id)?.name).filter(Boolean) as string[];
+
+    const cast = (details as any)?.credits?.cast?.slice(0, 5).map((actor: any) => actor.name) || [];
+    const creator = (details as any)?.created_by?.[0]?.name || 'Unknown Creator';
+
+    return {
+      id: show.id + 100000, // Offset to avoid conflicts with movies
+      title: show.name,
+      description: show.overview || 'No description available.',
+      thumbnail: show.poster_path ? `${this.TMDB_IMAGE_BASE_URL}/w500${show.poster_path}` : this.getPlaceholderImage(),
+      backdrop: show.backdrop_path ? `${this.TMDB_IMAGE_BASE_URL}/w1280${show.backdrop_path}` : this.getPlaceholderImage(),
+      videoUrl: trailerUrl || undefined,
+      trailerUrl: trailerUrl || undefined,
+      genre: genres.length > 0 ? genres : ['Drama'],
+      rating: Math.round(show.vote_average * 10) / 10,
+      year: show.first_air_date ? new Date(show.first_air_date).getFullYear() : 2023,
+      duration: details ? `${details.number_of_seasons} Season${details.number_of_seasons > 1 ? 's' : ''}` : '1 Season',
+      type: 'series',
+      trending: show.popularity > 50,
+      featured: show.vote_average > 8.0,
+      maturityRating: 'TV-14',
+      cast: cast.length > 0 ? cast : ['Cast information not available'],
+      director: creator,
+      releaseDate: show.first_air_date,
+      originalTitle: show.original_name,
+      popularity: show.popularity
+    };
+  }
+
+  private getPlaceholderImage(): string {
+    const placeholders = [
+      'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=500',
+      'https://images.pexels.com/photos/7991225/pexels-photo-7991225.jpeg?auto=compress&cs=tinysrgb&w=500',
+      'https://images.pexels.com/photos/7991664/pexels-photo-7991664.jpeg?auto=compress&cs=tinysrgb&w=500',
+      'https://images.pexels.com/photos/8566473/pexels-photo-8566473.jpeg?auto=compress&cs=tinysrgb&w=500',
+      'https://images.pexels.com/photos/8111357/pexels-photo-8111357.jpeg?auto=compress&cs=tinysrgb&w=500'
+    ];
+    return placeholders[Math.floor(Math.random() * placeholders.length)];
   }
 
   async getMovieDetails(movieId: number): Promise<Observable<Content>> {
     try {
+      await this.initializeContent();
       const content = this.allContent.find(c => c.id === movieId);
       if (content) {
         return of(content);
       }
+      
+      // If not found locally, try to fetch from API
+      const details = await this.fetchTMDbMovieDetails(movieId);
+      if (details) {
+        const trailerUrl = await this.fetchMovieTrailer(movieId);
+        const movie = {
+          id: details.id,
+          title: details.title,
+          overview: details.overview,
+          poster_path: details.poster_path,
+          backdrop_path: details.backdrop_path,
+          genre_ids: details.genres.map(g => g.id),
+          vote_average: details.vote_average,
+          release_date: details.release_date,
+          original_title: details.title,
+          popularity: 0,
+          adult: details.adult
+        } as TMDBMovie;
+        
+        const content = this.convertTMDbMovieToContent(movie, details, trailerUrl);
+        return of(content || this.getFallbackContent());
+      }
+      
       return of(this.getFallbackContent());
     } catch (error) {
       console.error('Error fetching movie details:', error);
@@ -321,8 +409,11 @@ export class ContentService {
 
   async getFeaturedContent(): Promise<Observable<Content>> {
     try {
-      await this.loadInitialContent();
-      const featured = this.allContent.find(movie => movie.featured) || this.allContent[0] || this.getFallbackContent();
+      await this.initializeContent();
+      const featured = this.allContent.find(content => content.featured) || 
+                      this.allContent.find(content => content.rating > 8.0) ||
+                      this.allContent[0] || 
+                      this.getFallbackContent();
       return of(featured);
     } catch (error) {
       console.error('Error getting featured content:', error);
@@ -332,7 +423,7 @@ export class ContentService {
 
   async getCategories(): Promise<Observable<Category[]>> {
     try {
-      await this.loadInitialContent();
+      await this.initializeContent();
       
       const categories: Category[] = [
         {
@@ -342,7 +433,7 @@ export class ContentService {
         },
         {
           id: 'popular',
-          name: 'Popular Movies',
+          name: 'Popular on StreamFlix',
           content: this.allContent.sort((a, b) => (b.popularity || 0) - (a.popularity || 0)).slice(0, 20)
         },
         {
@@ -352,22 +443,32 @@ export class ContentService {
         },
         {
           id: 'action',
-          name: 'Action Movies',
+          name: 'Action & Adventure',
           content: this.allContent.filter(c => c.genre.some(g => g.toLowerCase().includes('action'))).slice(0, 20)
         },
         {
           id: 'comedy',
-          name: 'Comedy Movies',
+          name: 'Comedy Movies & Shows',
           content: this.allContent.filter(c => c.genre.some(g => g.toLowerCase().includes('comedy'))).slice(0, 20)
         },
         {
           id: 'drama',
-          name: 'Drama Movies',
+          name: 'Drama',
           content: this.allContent.filter(c => c.genre.some(g => g.toLowerCase().includes('drama'))).slice(0, 20)
+        },
+        {
+          id: 'sci-fi',
+          name: 'Sci-Fi & Fantasy',
+          content: this.allContent.filter(c => c.genre.some(g => 
+            g.toLowerCase().includes('science') || 
+            g.toLowerCase().includes('fantasy') || 
+            g.toLowerCase().includes('sci-fi')
+          )).slice(0, 20)
         }
       ];
 
-      return of(categories);
+      // Filter out empty categories
+      return of(categories.filter(cat => cat.content.length > 0));
     } catch (error) {
       console.error('Error getting categories:', error);
       return of([]);
@@ -376,7 +477,7 @@ export class ContentService {
 
   async getMoviesOnly(): Promise<Observable<Category[]>> {
     try {
-      await this.loadInitialContent();
+      await this.initializeContent();
       const movies = this.allContent.filter(c => c.type === 'movie');
       
       const categories: Category[] = [
@@ -404,10 +505,15 @@ export class ContentService {
           id: 'drama-movies',
           name: 'Drama Movies',
           content: movies.filter(c => c.genre.some(g => g.toLowerCase().includes('drama'))).slice(0, 20)
+        },
+        {
+          id: 'horror-movies',
+          name: 'Horror Movies',
+          content: movies.filter(c => c.genre.some(g => g.toLowerCase().includes('horror'))).slice(0, 20)
         }
       ];
 
-      return of(categories);
+      return of(categories.filter(cat => cat.content.length > 0));
     } catch (error) {
       console.error('Error getting movie categories:', error);
       return of([]);
@@ -416,7 +522,7 @@ export class ContentService {
 
   async getTVShowsOnly(): Promise<Observable<Category[]>> {
     try {
-      await this.loadInitialContent();
+      await this.initializeContent();
       const tvShows = this.allContent.filter(c => c.type === 'series');
       
       const categories: Category[] = [
@@ -447,7 +553,7 @@ export class ContentService {
         }
       ];
 
-      return of(categories);
+      return of(categories.filter(cat => cat.content.length > 0));
     } catch (error) {
       console.error('Error getting TV show categories:', error);
       return of([]);
@@ -460,38 +566,28 @@ export class ContentService {
     }
     
     try {
-      // Search OMDb API
-      const response = await fetch(`${this.OMDB_BASE_URL}/?s=${encodeURIComponent(query)}&apikey=${this.OMDB_API_KEY}`);
-      const data = await response.json();
+      // Search TMDb API
+      const [movieResults, tvResults] = await Promise.all([
+        this.searchTMDbMovies(query),
+        this.searchTMDbTVShows(query)
+      ]);
       
-      if (data.Response === 'True' && data.Search) {
-        const searchResults = await Promise.all(
-          data.Search.slice(0, 10).map(async (movie: any) => {
-            const details = await this.fetchOMDbDetails(movie.imdbID);
-            return this.convertOMDbToContent(details, movie);
-          })
-        );
-        
-        const validResults = searchResults.filter(result => result !== null);
-        
-        // Also search local content
-        const localResults = this.allContent.filter(content => 
-          content.title.toLowerCase().includes(query.toLowerCase()) ||
-          content.description.toLowerCase().includes(query.toLowerCase()) ||
-          content.genre.some(g => g.toLowerCase().includes(query.toLowerCase()))
-        );
-        
-        return of([...validResults, ...localResults].slice(0, 20));
-      }
+      const allResults = [...movieResults, ...tvResults];
       
-      // Fallback to local search
+      // Also search local content
       const localResults = this.allContent.filter(content => 
         content.title.toLowerCase().includes(query.toLowerCase()) ||
         content.description.toLowerCase().includes(query.toLowerCase()) ||
         content.genre.some(g => g.toLowerCase().includes(query.toLowerCase()))
       );
       
-      return of(localResults.slice(0, 20));
+      // Combine and deduplicate results
+      const combinedResults = [...allResults, ...localResults];
+      const uniqueResults = combinedResults.filter((content, index, self) => 
+        index === self.findIndex(c => c.title === content.title)
+      );
+      
+      return of(uniqueResults.slice(0, 20));
     } catch (error) {
       console.error('Error searching content:', error);
       
@@ -503,6 +599,60 @@ export class ContentService {
       );
       
       return of(localResults.slice(0, 20));
+    }
+  }
+
+  private async searchTMDbMovies(query: string): Promise<Content[]> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/search/movie?api_key=${this.TMDB_API_KEY}&language=en-US&query=${encodeURIComponent(query)}&page=1`
+      );
+      
+      if (!response.ok) {
+        return [];
+      }
+      
+      const data: TMDBResponse = await response.json();
+      
+      const movies = await Promise.all(
+        data.results.slice(0, 10).map(async (movie) => {
+          const details = await this.fetchTMDbMovieDetails(movie.id);
+          const trailerUrl = await this.fetchMovieTrailer(movie.id);
+          return this.convertTMDbMovieToContent(movie, details, trailerUrl);
+        })
+      );
+      
+      return movies.filter(movie => movie !== null);
+    } catch (error) {
+      console.error('Error searching TMDb movies:', error);
+      return [];
+    }
+  }
+
+  private async searchTMDbTVShows(query: string): Promise<Content[]> {
+    try {
+      const response = await fetch(
+        `${this.TMDB_BASE_URL}/search/tv?api_key=${this.TMDB_API_KEY}&language=en-US&query=${encodeURIComponent(query)}&page=1`
+      );
+      
+      if (!response.ok) {
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      const shows = await Promise.all(
+        data.results.slice(0, 10).map(async (show: TMDBTVShow) => {
+          const details = await this.fetchTMDbTVDetails(show.id);
+          const trailerUrl = await this.fetchTVTrailer(show.id);
+          return this.convertTMDbTVToContent(show, details, trailerUrl);
+        })
+      );
+      
+      return shows.filter(show => show !== null);
+    } catch (error) {
+      console.error('Error searching TMDb TV shows:', error);
+      return [];
     }
   }
 
@@ -542,22 +692,31 @@ export class ContentService {
     return this.watchlist$.value.some(c => c.id === contentId);
   }
 
+  private getFallbackMovies(): Content[] {
+    return [
+      {
+        id: 1,
+        title: 'The Dark Knight',
+        description: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests.',
+        thumbnail: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/hqkIcbrOHL86UncnHIsHVcVmzue.jpg',
+        genre: ['Action', 'Crime', 'Drama'],
+        rating: 9.0,
+        year: 2008,
+        duration: '152 min',
+        type: 'movie',
+        featured: true,
+        trending: true,
+        maturityRating: 'PG-13',
+        cast: ['Christian Bale', 'Heath Ledger', 'Aaron Eckhart'],
+        director: 'Christopher Nolan',
+        trailerUrl: 'https://www.youtube.com/embed/EXeTwQWrcwY',
+        popularity: 95
+      }
+    ];
+  }
+
   private getFallbackContent(): Content {
-    return {
-      id: 1,
-      title: 'The Dark Knight',
-      description: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests.',
-      thumbnail: 'https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_SX300.jpg',
-      backdrop: 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=1200',
-      genre: ['Action', 'Crime', 'Drama'],
-      rating: 9.0,
-      year: 2008,
-      duration: '152 min',
-      type: 'movie',
-      featured: true,
-      maturityRating: 'PG-13',
-      cast: ['Christian Bale', 'Heath Ledger', 'Aaron Eckhart'],
-      director: 'Christopher Nolan'
-    };
+    return this.getFallbackMovies()[0];
   }
 }
